@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>Vosk Transkripsiyon</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    #logs {
+      font-family: monospace;
+      white-space: pre-wrap;
+      overflow-y: auto;
+      max-height: 200px;
+    }
+  </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+  <div class="max-w-2xl mx-auto p-6 bg-white rounded-xl shadow-md mt-10">
+    <h2 class="text-2xl font-bold mb-4 text-center text-blue-600">Vosk ile Transkripsiyon</h2>
+
+    <label class="block mb-2 font-medium">Video Dosyası</label>
+    <input type="file" id="fileInput" class="mb-4 w-full border border-gray-300 p-2 rounded" />
+
+    <label for="languageSelect" class="block mb-2 font-medium">Dil Seçin:</label>
+    <select id="languageSelect" name="language" class="mb-4 w-full border border-gray-300 p-2 rounded">
+
+    <!-- Dil seçenekleri tablo şeklinde gruplandı -->
+<optgroup label="Asya Dilleri">
+  <option value="tr">Türkçe (tr)</option>
+  <option value="hi">Hintçe (hi)</option>
+  <option value="ko">Korece (ko)</option>
+  <option value="ja">Japonca (ja)</option>
+  <option value="cn">Çince (cn)</option>
+  <option value="uz">Özbekçe (uz)</option>
+  <option value="kz">Kazakça (kz)</option>
+  <option value="tg">Tacikçe (tg)</option>
+</optgroup>
+<optgroup label="Avrupa Dilleri">
+  <option value="en-us">İngilizce (US)</option>
+  <option value="en-gb">İngilizce (UK)</option>
+  <option value="fr">Fransızca (fr)</option>
+  <option value="de">Almanca (de)</option>
+  <option value="it">İtalyanca (it)</option>
+  <option value="es">İspanyolca (es)</option>
+  <option value="pl">Lehçe (pl)</option>
+  <option value="nl">Flemenkçe (nl)</option>
+  <option value="sv">İsveççe (sv)</option>
+  <option value="cs">Çekçe (cs)</option>
+  <option value="el-gr">Yunanca (el-gr)</option>
+  <option value="br">Bretonca (br)</option>
+  <option value="ua">Ukraynaca (ua)</option>
+  <option value="ca">Katalanca (ca)</option>
+</optgroup>
+<optgroup label="Orta Doğu ve Diğer">
+  <option value="ar">Arapça (ar)</option>
+  <option value="ar-tn">Tunus Arapçası (ar-tn)</option>
+  <option value="fa">Farsça (fa)</option>
+  <option value="he">İbranice (he)</option>
+  <option value="eo">Esperanto (eo)</option>
+  <option value="gu">Gujarati (gu)</option>
+  <option value="te">Telugu (te)</option>
+  <option value="tl-ph">Filipince (tl-ph)</option>
+  <option value="vn">Vietnamca (vn)</option>
+</optgroup>
+<optgroup label="Tümü">
+  <option value="all">Hepsi (all)</option>
+</optgroup>
+</select>
+
+<button onclick="submitForm()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded">Gönder</button>
+
+<progress id="progressBar" value="0" max="100" class="w-full h-4 mt-6" style="display:none;"></progress>
+
+<h3 class="mt-6 font-semibold">İşlem Durumu:</h3>
+<div id="logs" class="p-3 mt-2 bg-gray-100 border border-gray-300 rounded"></div>
+</div>
+
+  <script>
+    function submitForm() {
+      const fileInput = document.getElementById('fileInput');
+      const selectedLanguage = document.getElementById('languageSelect').value;
+      const logsDiv = document.getElementById('logs');
+      const progressBar = document.getElementById('progressBar');
+  
+      logsDiv.textContent = "";
+      progressBar.value = 0;
+      progressBar.style.display = 'block';
+  
+      if (!fileInput.files.length || !selectedLanguage) {
+        logsDiv.textContent = "Dosya ve dil seçimi zorunlu.";
+        return;
+      }
+  
+      const formData = new FormData();
+      formData.append('file', fileInput.files[0]);
+      formData.append('option', selectedLanguage);
+  
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/upload", true);
+  
+      xhr.onload = function () {
+        if (xhr.status === 200) {
+          const response = JSON.parse(xhr.responseText);
+          const filename = response.filename;
+          const lang = response.language;
+  
+          const eventSource = new EventSource(`/progress?file=${filename}&lang=${lang}`);
+          eventSource.onmessage = function (event) {
+            if (event.data.includes("__DONE__")) {
+              eventSource.close();
+              logsDiv.textContent += "\nİşlem tamamlandı. Dosya indiriliyor...\n";
+              const outputFile = event.data.split("|")[1];
+              waitAndDownload(outputFile);
+            } else {
+              const percent = parseFloat(event.data);
+              progressBar.value = percent;
+              logsDiv.textContent = `Transkripsiyon ilerliyor: %${percent}`;
+            }
+          };
+        } else {
+          logsDiv.textContent = "Yükleme sırasında bir hata oluştu.";
+        }
+      };
+  
+      xhr.send(formData);
+    }
+  
+    function waitAndDownload(file, retries = 10) {
+      fetch(`/download?file=${file}`, { method: 'HEAD' })
+        .then(res => {
+          if (res.status === 200) {
+            window.location.href = `/download?file=${file}`;
+          } else if (retries > 0) {
+            setTimeout(() => waitAndDownload(file, retries - 1), 1000);
+          } else {
+            document.getElementById('logs').textContent += "\nDosya hazır değil. Lütfen manuel olarak tekrar deneyin.";
+          }
+        })
+        .catch(() => {
+          document.getElementById('logs').textContent += "\nSunucuya erişilemedi.";
+        });
+    }
+  </script>
+  
+</body>
+</html>

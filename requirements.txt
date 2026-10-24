@@ -1,0 +1,4 @@
+flask>=3.0
+faster-whisper>=1.1.0
+# PyAV 16+ faster-whisper ile uyumsuz (metadata_errors)
+av>=11,<16

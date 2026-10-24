@@ -1,19 +1,13 @@
-import wave
-import json
-from vosk import Model, KaldiRecognizer
+"""Komut satırından hızlı transkripsiyon: python transkript.py <dosya> [dil]"""
+import sys
 
-wf = wave.open("temp_audio.wav", "rb")
-model = Model("vosk-model-small-tr-0.22")
-rec = KaldiRecognizer(model, wf.getframerate())
+from transcriber import transcribe
 
-text = ""
+if len(sys.argv) < 2:
+    sys.exit("Kullanım: python transkript.py <medya_dosyası> [dil, örn. tr]")
 
-while True:
-    data = wf.readframes(4000)
-    if len(data) == 0:
-        break
-    if rec.AcceptWaveform(data):
-        result = json.loads(rec.Result())
-        text += result.get("text", "") + " "
-
-print("Transkript:\n", text)
+segments, info = transcribe(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else None)
+print(f"Algılanan dil: {info.language} (%{info.language_probability * 100:.0f})")
+print("Transkript:")
+for seg in segments:
+    print(seg.text.strip())

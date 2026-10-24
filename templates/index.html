@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8">
-  <title>Vosk Transkripsiyon</title>
+  <title>Whisper Transkripsiyon</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     #logs {
@@ -15,7 +15,7 @@
 </head>
 <body class="bg-gray-100 text-gray-800">
   <div class="max-w-2xl mx-auto p-6 bg-white rounded-xl shadow-md mt-10">
-    <h2 class="text-2xl font-bold mb-4 text-center text-blue-600">Vosk ile Transkripsiyon</h2>
+    <h2 class="text-2xl font-bold mb-4 text-center text-blue-600">faster-whisper ile Transkripsiyon</h2>
 
     <label class="block mb-2 font-medium">Video Dosyası</label>
     <input type="file" id="fileInput" class="mb-4 w-full border border-gray-300 p-2 rounded" />
@@ -55,14 +55,13 @@
   <option value="ar-tn">Tunus Arapçası (ar-tn)</option>
   <option value="fa">Farsça (fa)</option>
   <option value="he">İbranice (he)</option>
-  <option value="eo">Esperanto (eo)</option>
   <option value="gu">Gujarati (gu)</option>
   <option value="te">Telugu (te)</option>
   <option value="tl-ph">Filipince (tl-ph)</option>
   <option value="vn">Vietnamca (vn)</option>
 </optgroup>
-<optgroup label="Tümü">
-  <option value="all">Hepsi (all)</option>
+<optgroup label="Otomatik">
+  <option value="all">Otomatik algıla</option>
 </optgroup>
 </select>
 
@@ -103,9 +102,14 @@
           const filename = response.filename;
           const lang = response.language;
   
-          const eventSource = new EventSource(`/progress?file=${filename}&lang=${lang}`);
+          const eventSource = new EventSource(`/progress?file=${encodeURIComponent(filename)}&lang=${encodeURIComponent(lang)}`);
+          // Bağlantı koparsa EventSource otomatik yeniden bağlanıp işi tekrar başlatmasın
+          eventSource.onerror = function () { eventSource.close(); };
           eventSource.onmessage = function (event) {
-            if (event.data.includes("__DONE__")) {
+            if (event.data.startsWith("__ERROR__")) {
+              eventSource.close();
+              logsDiv.textContent += "\nHata: " + event.data.split("|").slice(1).join("|");
+            } else if (event.data.startsWith("__DONE__")) {
               eventSource.close();
               logsDiv.textContent += "\nİşlem tamamlandı. Dosya indiriliyor...\n";
               const outputFile = event.data.split("|")[1];

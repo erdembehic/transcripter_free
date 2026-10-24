@@ -2,144 +2,147 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Vosk Transkripsiyon</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    #logs {
+    #logs, #preview {
       font-family: monospace;
       white-space: pre-wrap;
       overflow-y: auto;
-      max-height: 200px;
     }
+    #logs { max-height: 200px; }
+    #preview { max-height: 320px; }
   </style>
 </head>
 <body class="bg-gray-100 text-gray-800">
-  <div class="max-w-2xl mx-auto p-6 bg-white rounded-xl shadow-md mt-10">
+  <div class="max-w-2xl mx-4 sm:mx-auto p-6 bg-white rounded-xl shadow-md mt-10">
     <h2 class="text-2xl font-bold mb-4 text-center text-blue-600">Vosk ile Transkripsiyon</h2>
 
-    <label class="block mb-2 font-medium">Video Dosyası</label>
-    <input type="file" id="fileInput" class="mb-4 w-full border border-gray-300 p-2 rounded" />
+    <label for="fileInput" class="block mb-2 font-medium">Video veya Ses Dosyası <span class="text-sm text-gray-500">(en fazla {{ max_upload_mb }} MB)</span></label>
+    <input type="file" id="fileInput" accept="video/*,audio/*" class="mb-4 w-full border border-gray-300 p-2 rounded" />
 
     <label for="languageSelect" class="block mb-2 font-medium">Dil Seçin:</label>
-    <select id="languageSelect" name="language" class="mb-4 w-full border border-gray-300 p-2 rounded">
+    <select id="languageSelect" class="mb-4 w-full border border-gray-300 p-2 rounded">
+      {% for group, langs in language_groups %}
+      <optgroup label="{{ group }}">
+        {% for code, name in langs %}
+        <option value="{{ code }}">{{ name }} ({{ code }})</option>
+        {% endfor %}
+      </optgroup>
+      {% endfor %}
+    </select>
 
-    <!-- Dil seçenekleri tablo şeklinde gruplandı -->
-<optgroup label="Asya Dilleri">
-  <option value="tr">Türkçe (tr)</option>
-  <option value="hi">Hintçe (hi)</option>
-  <option value="ko">Korece (ko)</option>
-  <option value="ja">Japonca (ja)</option>
-  <option value="cn">Çince (cn)</option>
-  <option value="uz">Özbekçe (uz)</option>
-  <option value="kz">Kazakça (kz)</option>
-  <option value="tg">Tacikçe (tg)</option>
-</optgroup>
-<optgroup label="Avrupa Dilleri">
-  <option value="en-us">İngilizce (US)</option>
-  <option value="en-gb">İngilizce (UK)</option>
-  <option value="fr">Fransızca (fr)</option>
-  <option value="de">Almanca (de)</option>
-  <option value="it">İtalyanca (it)</option>
-  <option value="es">İspanyolca (es)</option>
-  <option value="pl">Lehçe (pl)</option>
-  <option value="nl">Flemenkçe (nl)</option>
-  <option value="sv">İsveççe (sv)</option>
-  <option value="cs">Çekçe (cs)</option>
-  <option value="el-gr">Yunanca (el-gr)</option>
-  <option value="br">Bretonca (br)</option>
-  <option value="ua">Ukraynaca (ua)</option>
-  <option value="ca">Katalanca (ca)</option>
-</optgroup>
-<optgroup label="Orta Doğu ve Diğer">
-  <option value="ar">Arapça (ar)</option>
-  <option value="ar-tn">Tunus Arapçası (ar-tn)</option>
-  <option value="fa">Farsça (fa)</option>
-  <option value="he">İbranice (he)</option>
-  <option value="eo">Esperanto (eo)</option>
-  <option value="gu">Gujarati (gu)</option>
-  <option value="te">Telugu (te)</option>
-  <option value="tl-ph">Filipince (tl-ph)</option>
-  <option value="vn">Vietnamca (vn)</option>
-</optgroup>
-<optgroup label="Tümü">
-  <option value="all">Hepsi (all)</option>
-</optgroup>
-</select>
+    <button id="submitBtn" onclick="submitForm()" class="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold py-2 px-4 rounded">Gönder</button>
 
-<button onclick="submitForm()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded">Gönder</button>
+    <progress id="progressBar" value="0" max="100" class="w-full h-4 mt-6 hidden"></progress>
 
-<progress id="progressBar" value="0" max="100" class="w-full h-4 mt-6" style="display:none;"></progress>
+    <h3 class="mt-6 font-semibold">İşlem Durumu:</h3>
+    <div id="logs" class="p-3 mt-2 bg-gray-100 border border-gray-300 rounded" aria-live="polite"></div>
 
-<h3 class="mt-6 font-semibold">İşlem Durumu:</h3>
-<div id="logs" class="p-3 mt-2 bg-gray-100 border border-gray-300 rounded"></div>
-</div>
+    <div id="result" class="hidden mt-6">
+      <div class="flex gap-2 mb-3">
+        <a id="downloadTxt" class="flex-1 text-center bg-green-600 hover:bg-green-700 text-white font-semibold py-2 rounded">TXT indir</a>
+        <a id="downloadSrt" class="flex-1 text-center bg-gray-700 hover:bg-gray-800 text-white font-semibold py-2 rounded">SRT (altyazı) indir</a>
+      </div>
+      <div id="preview" class="p-3 bg-gray-50 border border-gray-300 rounded"></div>
+    </div>
+  </div>
 
   <script>
+    const logsDiv = document.getElementById('logs');
+    const progressBar = document.getElementById('progressBar');
+    const submitBtn = document.getElementById('submitBtn');
+    const resultDiv = document.getElementById('result');
+
+    function setLog(message) {
+      logsDiv.textContent = message;
+    }
+
+    function finish(message) {
+      setLog(message);
+      submitBtn.disabled = false;
+    }
+
     function submitForm() {
       const fileInput = document.getElementById('fileInput');
       const selectedLanguage = document.getElementById('languageSelect').value;
-      const logsDiv = document.getElementById('logs');
-      const progressBar = document.getElementById('progressBar');
-  
-      logsDiv.textContent = "";
-      progressBar.value = 0;
-      progressBar.style.display = 'block';
-  
+
+      resultDiv.classList.add('hidden');
       if (!fileInput.files.length || !selectedLanguage) {
-        logsDiv.textContent = "Dosya ve dil seçimi zorunlu.";
+        setLog("Dosya ve dil seçimi zorunlu.");
         return;
       }
-  
+
       const formData = new FormData();
       formData.append('file', fileInput.files[0]);
       formData.append('option', selectedLanguage);
-  
+
+      submitBtn.disabled = true;
+      progressBar.classList.remove('hidden');
+      progressBar.value = 0;
+
       const xhr = new XMLHttpRequest();
       xhr.open("POST", "/upload", true);
-  
-      xhr.onload = function () {
-        if (xhr.status === 200) {
-          const response = JSON.parse(xhr.responseText);
-          const filename = response.filename;
-          const lang = response.language;
-  
-          const eventSource = new EventSource(`/progress?file=${filename}&lang=${lang}`);
-          eventSource.onmessage = function (event) {
-            if (event.data.includes("__DONE__")) {
-              eventSource.close();
-              logsDiv.textContent += "\nİşlem tamamlandı. Dosya indiriliyor...\n";
-              const outputFile = event.data.split("|")[1];
-              waitAndDownload(outputFile);
-            } else {
-              const percent = parseFloat(event.data);
-              progressBar.value = percent;
-              logsDiv.textContent = `Transkripsiyon ilerliyor: %${percent}`;
-            }
-          };
-        } else {
-          logsDiv.textContent = "Yükleme sırasında bir hata oluştu.";
+      xhr.upload.onprogress = function (e) {
+        if (e.lengthComputable) {
+          const percent = Math.round(e.loaded * 100 / e.total);
+          progressBar.value = percent;
+          setLog(`Dosya yükleniyor: %${percent}`);
         }
       };
-  
+      xhr.onload = function () {
+        let response = {};
+        try { response = JSON.parse(xhr.responseText); } catch (e) {}
+        if (xhr.status === 200) {
+          followProgress(response.job_id);
+        } else {
+          finish(response.error || "Yükleme sırasında bir hata oluştu.");
+        }
+      };
+      xhr.onerror = function () {
+        finish("Sunucuya erişilemedi.");
+      };
       xhr.send(formData);
     }
-  
-    function waitAndDownload(file, retries = 10) {
-      fetch(`/download?file=${file}`, { method: 'HEAD' })
-        .then(res => {
-          if (res.status === 200) {
-            window.location.href = `/download?file=${file}`;
-          } else if (retries > 0) {
-            setTimeout(() => waitAndDownload(file, retries - 1), 1000);
-          } else {
-            document.getElementById('logs').textContent += "\nDosya hazır değil. Lütfen manuel olarak tekrar deneyin.";
-          }
+
+    function followProgress(jobId) {
+      progressBar.value = 0;
+      setLog("Sırada bekleniyor...");
+      const eventSource = new EventSource(`/progress/${encodeURIComponent(jobId)}`);
+      eventSource.onmessage = function (event) {
+        const state = JSON.parse(event.data);
+        if (state.status === 'done') {
+          eventSource.close();
+          progressBar.value = 100;
+          finish("İşlem tamamlandı.");
+          showResult(jobId);
+        } else if (state.status === 'error') {
+          eventSource.close();
+          finish(`Hata: ${state.error}`);
+        } else if (state.status === 'running') {
+          progressBar.value = state.progress;
+          setLog(`Transkripsiyon ilerliyor: %${state.progress}`);
+        }
+      };
+      eventSource.onerror = function () {
+        // Bağlantı koparsa tarayıcı otomatik yeniden bağlanır; iş sunucuda devam eder
+        setLog("Bağlantı koptu, yeniden bağlanılıyor...");
+      };
+    }
+
+    function showResult(jobId) {
+      const base = `/download/${encodeURIComponent(jobId)}`;
+      document.getElementById('downloadTxt').href = `${base}?format=txt`;
+      document.getElementById('downloadSrt').href = `${base}?format=srt`;
+      fetch(`${base}?format=txt&inline=1`)
+        .then(res => res.ok ? res.text() : Promise.reject())
+        .then(text => {
+          document.getElementById('preview').textContent = text.trim() || "(Konuşma algılanmadı)";
+          resultDiv.classList.remove('hidden');
         })
-        .catch(() => {
-          document.getElementById('logs').textContent += "\nSunucuya erişilemedi.";
-        });
+        .catch(() => setLog("Sonuç alınamadı. Lütfen tekrar deneyin."));
     }
   </script>
-  
 </body>
 </html>
